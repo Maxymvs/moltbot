@@ -213,7 +213,8 @@ export const registerTelegramHandlers = ({
       const chatId = callbackMessage.chat.id;
       const isGroup =
         callbackMessage.chat.type === "group" || callbackMessage.chat.type === "supergroup";
-      if (inlineButtonsScope === "dm" && isGroup) return;
+      const isChannel = callbackMessage.chat.type === "channel";
+      if (inlineButtonsScope === "dm" && (isGroup || isChannel)) return;
       if (inlineButtonsScope === "group" && !isGroup) return;
 
       const messageThreadId = (callbackMessage as { message_thread_id?: number }).message_thread_id;
@@ -302,7 +303,23 @@ export const registerTelegramHandlers = ({
       }
 
       if (inlineButtonsScope === "allowlist") {
-        if (!isGroup) {
+        if (isChannel) {
+          // For channels: check if this channel is in the configured groups/channels list
+          // If configured, allow callbacks without requiring user to be in allowFrom
+          // (channel content is visible to subscribers, so button clicks should be allowed)
+          const channelConfig = groupConfig;
+          if (!channelConfig) {
+            logVerbose(
+              `Blocked telegram channel ${chatId} callback (channel not in groups config)`,
+            );
+            return;
+          }
+          if (channelConfig.enabled === false) {
+            logVerbose(`Blocked telegram channel ${chatId} callback (channel disabled)`);
+            return;
+          }
+          // Channel is configured and enabled - allow the callback
+        } else if (!isGroup) {
           if (dmPolicy === "disabled") return;
           if (dmPolicy !== "open") {
             const allowed =
